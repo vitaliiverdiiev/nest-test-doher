@@ -1,58 +1,22 @@
-ARG IMAGE=node:21-alpine
-
-#COMMON
-FROM $IMAGE as builder
-WORKDIR /app
-COPY . .
-RUN npm i
-
-#DEVELOPMENT
-FROM builder as dev
-CMD [""]
-
-#PROD MIDDLE STEP
-FROM builder as prod-build
-RUN npm run build
-RUN npm prune --production
-
-#PROD
-FROM $IMAGE as prod
-COPY --chown=node:node --from=prod-build /app/dist /app/dist
-COPY --chown=node:node --from=prod-build /app/node_modules /app/node_modules
-COPY --chown=node:node --from=prod-build /app/.env /app/dist/.env
-
-ENV NODE_ENV=production
-ENTRYPOINT ["node", "./main.js"]
-WORKDIR /app/dist
-CMD [""]
-
+FROM node:18-alpine As development
+WORKDIR /usr/src/app
+COPY --chown=node:node package*.json ./
+RUN npm ci
+COPY --chown=node:node . .
 USER node
 
-# FROM node:lts-alpine as build
+FROM node:18-alpine As build
+WORKDIR /usr/src/app
+COPY --chown=node:node package*.json ./
+COPY --chown=node:node --from=development /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node . .
+RUN npm run build
+ENV NODE_ENV production
+RUN npm ci --only=production && npm cache clean --force
+USER node
 
-# WORKDIR /usr/src/app
-
-# COPY package.json yarn.lock ./
-
-# RUN yarn
-
-# COPY . .
-
-# # Build
-# RUN yarn build
-
-# ### Build production image
-
-# FROM node:lts-alpine as prod
-
-# WORKDIR /usr/src/app
-
-# COPY --from=build /usr/src/app/dist ./dist
-# COPY --from=build /usr/src/app/package.json ./
-# COPY --from=build /usr/src/app/yarn.lock ./
-
-# EXPOSE 3000
-
-# RUN yarn install --frozen-lockfile --production
-
-# CMD ["node", "dist/main"]
+FROM node:18-alpine As production
+COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
+COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+CMD [ "node", "dist/main.js" ]
+  
